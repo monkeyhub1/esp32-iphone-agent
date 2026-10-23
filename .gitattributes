@@ -1,0 +1,2 @@
+# 保证 shell 脚本在任何系统上都是 LF 换行（Mac 上 CRLF 会导致 "bad interpreter"）
+*.sh text eol=lf

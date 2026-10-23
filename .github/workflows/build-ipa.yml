@@ -1,0 +1,60 @@
+# 在 GitHub 的免费 macOS 机器上编出未签名 IPA，下载后回 Windows 用 Sideloadly 自签安装。
+#
+# 用法：把这个文件放到仓库的 .github/workflows/ 下，push 到 main，
+# 然后在仓库 Actions 页面点 "Build unsigned IPA" -> Run workflow。
+# 跑完在页面底部的 Artifacts 里下载 IPhoneAgent-unsigned-ipa。
+#
+# 注意：不需要 Local.xcconfig（Shared.xcconfig 里已有默认 Bundle ID），
+# 因为这里是纯编译、不签名，跟你的 Apple Team 无关。
+
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  ipa:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build for device (unsigned)
+        run: |
+          xcodebuild \
+            -project IPhoneAgent.xcodeproj \
+            -scheme IPhoneAgent \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package into an .ipa
+        run: |
+          APP="build/Build/Products/Release-iphoneos/IPhoneAgent.app"
+          test -d "$APP" || { echo "找不到构建产物 $APP"; exit 1; }
+          echo "Bundle ID: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          echo "版本: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")"
+          echo "--- 内嵌扩展 ---"
+          ls -1 "$APP/PlugIns" || true
+          rm -rf Payload IPhoneAgent-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry IPhoneAgent-unsigned.ipa Payload
+          ls -lh IPhoneAgent-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPhoneAgent-unsigned-ipa
+          path: ios/IPhoneAgent-unsigned.ipa
+          if-no-files-found: error
